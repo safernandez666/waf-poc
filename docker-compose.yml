@@ -1,0 +1,101 @@
+# POC: App vulnerable con y sin WAF (Aegis)
+#
+#  Puerto 5000  ->  App directa, SIN protección   (el "ANTES")
+#  Puerto 8080  ->  Aegis WAF  ->  App             (el "DESPUÉS")
+#  Puerto 8081  ->  Consola web de administración de Aegis
+#
+# Uso:
+#   docker compose up -d
+#   # esperá ~20s a que Aegis y las DB estén listas
+#   python attack.py
+#
+services:
+
+  # --------------------------------------------------------------------
+  # App Flask deliberadamente vulnerable (upstream / backend)
+  # --------------------------------------------------------------------
+  vulnapp:
+    build: ./vulnapp
+    container_name: demoshop
+    restart: unless-stopped
+    ports:
+      - "5000:5000"      # <-- acceso DIRECTO sin WAF (el "antes")
+    networks:
+      - edge
+
+  # --------------------------------------------------------------------
+  # Aegis WAF  (se interpone delante de vulnapp)
+  # --------------------------------------------------------------------
+  aegis:
+    # La imagen NO está en ghcr: se carga desde el tarball del release
+    # con  ./setup-aegis.sh  (hace docker load -> queda como aegis:local).
+    image: aegis:local
+    container_name: aegis_server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"      # <-- tráfico pasando POR el WAF (el "después")
+      - "8081:8081"      # <-- consola de administración
+    environment:
+      AEGIS_ADMIN_PASSWORD: ${AEGIS_ADMIN_PASSWORD:-admin}
+      AEGIS_CONTROL_DB_HOST: postgres
+      AEGIS_CONTROL_DB_PORT: "5432"
+      AEGIS_CONTROL_DB_PASSWORD: ${AEGIS_CONTROL_DB_PASSWORD:-testdb}
+      AEGIS_ANALYTICS_HOST: clickhouse
+      AEGIS_ANALYTICS_PORT: "9000"
+      AEGIS_ANALYTICS_DB_PASSWORD: ${AEGIS_ANALYTICS_DB_PASSWORD:-analytics}
+      AEGIS_ANALYTICS_DB_PASSWORD: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./aegis/config.yaml:/var/lib/aegis/config.yaml  # config default del release, adaptado
+      - aegis_data:/var/lib/aegis/data
+    networks:
+      - edge
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegis_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aegis
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: ${AEGIS_CONTROL_DB_PASSWORD:-testdb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - edge
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    container_name: aegis_clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: aegis
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${AEGIS_ANALYTICS_DB_PASSWORD:-analytics}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --password \"$${CLICKHOUSE_PASSWORD}\" --query \"SELECT 1\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - edge
+
+volumes:
+  aegis_data:
+  postgres_data:
+  clickhouse_data:
+
+networks:
+  edge:
+    driver: bridge

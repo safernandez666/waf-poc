@@ -1,0 +1,3 @@
+Archivo legítimo de ejemplo.
+Esta es la descarga "buena" que debería funcionar sin problemas.
+El path traversal intentará salir de esta carpeta para leer, p.ej., /etc/passwd.
