@@ -20,8 +20,10 @@ mismos ataques.
 │   ├── Dockerfile
 │   └── files/notas.txt
 ├── attack.py              # lanza los ataques y arma la tabla antes/después
+├── alert-bridge.py        # puente ClickHouse -> webhook de Slack: alerta cada bloqueo
 ├── BONUS-TRACK.md         # experimentos extra: modo detección, rate limiting,
-│                          # bypass, overhead de latencia, paranoia level 2
+│                          # bypass, overhead de latencia, paranoia level 2,
+│                          # alertas a Slack
 ├── POST-BORRADOR.md       # borrador del artículo del blog
 └── README.md
 ```
