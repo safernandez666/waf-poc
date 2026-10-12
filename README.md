@@ -20,6 +20,8 @@ mismos ataques.
 │   ├── Dockerfile
 │   └── files/notas.txt
 ├── attack.py              # lanza los ataques y arma la tabla antes/después
+├── BONUS-TRACK.md         # experimentos extra: modo detección, rate limiting,
+│                          # bypass, overhead de latencia, paranoia level 2
 ├── POST-BORRADOR.md       # borrador del artículo del blog
 └── README.md
 ```
@@ -163,3 +165,11 @@ Aegis delante, los cuatro reciben HTTP 403 y nunca llegan a la app — mientras
 que el tráfico legítimo sigue pasando sin problemas. El código vulnerable no se
 toca: el WAF es una capa de defensa en profundidad, no un reemplazo de escribir
 código seguro.
+
+## Bonus track
+
+[BONUS-TRACK.md](BONUS-TRACK.md) tiene seis experimentos para cuando el
+antes/después ya te convenció: deployar en modo detección sin riesgo, rate
+limiting frenando credential stuffing, una batería de bypass con ofuscaciones,
+medición del overhead de latencia, qué cambia (y qué no) al subir el paranoia
+level del CRS, y cómo leer el anomaly score regla por regla en la telemetría.
