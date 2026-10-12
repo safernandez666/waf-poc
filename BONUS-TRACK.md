@@ -1,6 +1,6 @@
 Esta es la **segunda parte** de [Montando un WAF en 10 minutos: atacando una app antes y después de Aegis](https://blog.santiagoagustinfernandez.com/montando-un-waf-en-10-minutos-atacando-una-app-antes-y-despus-de-aegis). Si no la leíste, arrancá por ahí: levantamos una app Flask deliberadamente vulnerable, la atacamos sin protección (4/4 ataques explotaron) y pusimos Aegis —un WAF open source con OWASP CRS— delante (4/4 bloqueados).
 
-En esta parte nos ponemos del lado de quien **opera** el WAF. Seis experimentos que quedaron fuera de la línea principal pero que responden lo que cualquier equipo pregunta antes de poner uno en producción: ¿puedo deployarlo sin romper nada?, ¿frena el abuso por volumen?, ¿aguanta intentos de evasión?, ¿cuánto cuesta en latencia?, ¿qué cambia si subo el paranoia level? Todo probado contra el mismo laboratorio, con el mismo formato de siempre: sentencia → captura.
+En esta parte nos ponemos del lado de quien **opera** el WAF. Siete experimentos que quedaron fuera de la línea principal pero que responden lo que cualquier equipo pregunta antes de poner uno en producción: ¿puedo deployarlo sin romper nada?, ¿frena el abuso por volumen?, ¿aguanta intentos de evasión?, ¿cuánto cuesta en latencia?, ¿qué cambia si subo el paranoia level?, ¿y cómo me entero cuando frena algo? Todo probado contra el mismo laboratorio, con el mismo formato de siempre: sentencia → captura.
 
 El código del lab sigue en [GitHub](https://github.com/safernandez666/waf-poc): `docker compose up -d` y lo tenés corriendo.
 
@@ -62,6 +62,10 @@ El doble encoding es el único que cruzó — pero por la razón equivocada: la 
 Del lado SQLi ni siquiera hubo que analizar casos: `/**/` como espacio, variaciones de mayúsculas, comentarios alternativos — todo 403. El libinjection del CRS detecta la *estructura* de la inyección, no un string fijo, así que ofuscar texto no alcanza.
 
 **Lo que sí pasó, por diseño:** tokens sueltos como `UNION ALL` o `1 OR 1` devuelven 200. El anomaly scoring los puntúa por debajo del umbral (5) y los deja pasar — así es como el CRS evita falsos positivos sobre búsquedas legítimas de un usuario. Y acá está la moraleja del experimento: **no son exploitables**. Subir el paranoia level no era necesario: PL1 con umbral 5 bastó para todo lo que probamos.
+
+Todo el ciclo en una imagen: el ataque muere en el WAF con un 403 y queda persistido en ClickHouse; la búsqueda legítima pasa transparente y llega a Flask sin que el usuario note que hay un WAF en el medio:
+
+![Secuencia completa: ataque bloqueado en el WAF con 403 y trafico legitimo pasando transparente a Flask](capturas/20-secuencia-archify.png)
 
 ---
 
@@ -127,8 +131,26 @@ python attack.py              # bateria ANTES/DESPUES contra ambos puertos
 
 ---
 
+## 7. Alertas en tiempo real: del bloqueo a Slack
+
+Aegis no trae notificaciones nativas, pero la telemetría está en ClickHouse y eso alcanza: un script de ~60 líneas barre los bloqueos nuevos y los postea a un webhook entrante de Slack. Corre en el host, poll cada 5 segundos:
+
+```bash
+WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxxx python3 alert-bridge.py
+```
+
+Disparamos el SQLi de siempre contra `/login`, el WAF lo bloqueó, y alrededor de 30 segundos después (lo que tarda la telemetría en aterrizar en ClickHouse + el poll del script) el webhook recibió esto:
+
+![Alerta del WAF llegando al webhook: GET /login bloqueado, anomaly score 5, ip del atacante](capturas/26-bonus-slack-webhook.png)
+
+La captura es de webhook.site, un receptor de prueba que habilitás en un click: habla exactamente el mismo formato que un Incoming Webhook de Slack (`{"text": "..."}`), así que para producción solo cambiás la `WEBHOOK_URL`. Y como el puerto 8123 de ClickHouse quedó publicado en el compose del lab (ver `docker-compose.yml`), el script no necesita correr adentro de la red Docker.
+
+Para producción hay que endurecerlo: correrlo como servicio con restart, deduplicar si te llega un flood de bloqueos (un atacante persistene te puede saturar el canal), y pensar bien antes de usar `--catch-up`, que alerta también el histórico. Pero como demostración del principio "WAF + telemetría abierta = lo integrás con lo que tu equipo ya usa", alcanza y sobra.
+
+---
+
 ## Cerrando
 
-Seis cosas que la demo estándar no muestra y que cualquier equipo quiere saber antes de producción: se puede deployar en detección sin riesgo, frena abuso por volumen sin tocar reglas, resistió una batería de ofuscaciones estándar sin configuración extra, el overhead de latencia es indistinguible del ruido de medición, subir el paranoia level no suma contra vectores clásicos (y la telemetría te lo prueba regla por regla), y todo el lab es reproducible con tres comandos.
+Siete cosas que la demo estándar no muestra y que cualquier equipo quiere saber antes de producción: se puede deployar en detección sin riesgo, frena abuso por volumen sin tocar reglas, resistió una batería de ofuscaciones estándar sin configuración extra, el overhead de latencia es indistinguible del ruido de medición, subir el paranoia level no suma contra vectores clásicos (y la telemetría te lo prueba regla por regla), y en media hora de Python tenés alertas de bloqueos en el canal de tu equipo. Todo el lab es reproducible con tres comandos.
 
 Lo que queda pendiente: encontrar un payload que **sí** cruce el CRS. Va a requerir entender bien qué regla puntúa qué, bajar el umbral, o buscar en vectores que PL1 no mira. Esa es la tercera parte.

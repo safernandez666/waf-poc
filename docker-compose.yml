@@ -43,7 +43,6 @@ services:
       AEGIS_ANALYTICS_HOST: clickhouse
       AEGIS_ANALYTICS_PORT: "9000"
       AEGIS_ANALYTICS_DB_PASSWORD: ${AEGIS_ANALYTICS_DB_PASSWORD:-analytics}
-      AEGIS_ANALYTICS_DB_PASSWORD: ""
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,6 +76,10 @@ services:
     image: clickhouse/clickhouse-server:25.8
     container_name: aegis_clickhouse
     restart: unless-stopped
+    # 8123 (HTTP) publicado solo para el lab: lo usa alert-bridge.py desde el host.
+    # En produccion ClickHouse no deberia ser accesible fuera de la red 'edge'.
+    ports:
+      - "8123:8123"
     environment:
       CLICKHOUSE_DB: aegis
       CLICKHOUSE_USER: default
