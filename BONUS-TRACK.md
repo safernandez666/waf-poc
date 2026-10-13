@@ -139,11 +139,15 @@ Aegis no trae notificaciones nativas, pero la telemetría está en ClickHouse y 
 WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxxx python3 alert-bridge.py
 ```
 
-Disparamos el SQLi de siempre contra `/login`, el WAF lo bloqueó, y alrededor de 30 segundos después (lo que tarda la telemetría en aterrizar en ClickHouse + el poll del script) el webhook recibió esto:
+Disparamos la batería de siempre contra el WAF — SQLi, XSS y path traversal — y alrededor de 30 segundos después (lo que tarda la telemetría en aterrizar en ClickHouse + el poll del script) el canal `#alarms` de Slack recibió una alerta por cada bloqueo, con path, query, anomaly score e IP:
 
-![Alerta del WAF llegando al webhook: GET /login bloqueado, anomaly score 5, ip del atacante](capturas/26-bonus-slack-webhook.png)
+![Tres alertas de Aegis en el canal #alarms de Slack: SQLi score 5, path traversal score 40, XSS score 20](capturas/27-bonus-slack-real.jpg)
 
-La captura es de webhook.site, un receptor de prueba que habilitás en un click: habla exactamente el mismo formato que un Incoming Webhook de Slack (`{"text": "..."}`), así que para producción solo cambiás la `WEBHOOK_URL`. Y como el puerto 8123 de ClickHouse quedó publicado en el compose del lab (ver `docker-compose.yml`), el script no necesita correr adentro de la red Docker.
+Si querés probarlo sin Slack, [webhook.site](https://webhook.site) habla exactamente el mismo formato (`{"text": "..."}`): creás una URL, la usás como `WEBHOOK_URL`, y recibís lo mismo que vería el webhook entrante de Slack:
+
+![Alerta del WAF llegando a webhook.site: GET /login bloqueado, anomaly score 5, ip del atacante](capturas/26-bonus-slack-webhook.png)
+
+(Ojo: la URL de webhook.site no existe hasta que se crea — abrila en el navegador o crealá con `curl -X POST https://webhook.site/token` antes de disparar el ataque, si no el POST da 404.) Y como el puerto 8123 de ClickHouse quedó publicado en el compose del lab (ver `docker-compose.yml`), el script no necesita correr adentro de la red Docker.
 
 Para producción hay que endurecerlo: correrlo como servicio con restart, deduplicar si te llega un flood de bloqueos (un atacante persistene te puede saturar el canal), y pensar bien antes de usar `--catch-up`, que alerta también el histórico. Pero como demostración del principio "WAF + telemetría abierta = lo integrás con lo que tu equipo ya usa", alcanza y sobra.
 
